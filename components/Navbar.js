@@ -300,8 +300,32 @@ export function Navbar() {
               )}
             </div>
 
-            {/* Enhanced Mobile menu button */}
-            <div className="md:hidden">
+            {/* Enhanced Mobile menu button with User Logo */}
+            <div className="md:hidden flex items-center space-x-3">
+              {user && (
+                <div className="relative">
+                  {getUserPhoto() ? (
+                    <img
+                      src={getUserPhoto()}
+                      alt="Profile"
+                      className="w-9 h-9 rounded-full border-2 border-accent/50 object-cover shadow-md"
+                      onError={(e) => {
+                        e.target.style.display = "none";
+                        e.target.nextElementSibling.style.display = "flex";
+                      }}
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent via-blue-500 to-purple-500 flex items-center justify-center border-2 border-accent/50 shadow-md">
+                      <span className="text-xs font-bold text-white">
+                        {getUserInitials(getUserDisplayName())}
+                      </span>
+                    </div>
+                  )}
+                  {/* Status indicator (green dot) */}
+                  <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-black animate-pulse" />
+                </div>
+              )}
+
               <Button
                 variant="ghost"
                 size="sm"
