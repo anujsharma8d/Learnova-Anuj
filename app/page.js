@@ -83,7 +83,7 @@ const TEAM_MEMBERS = [
     role: "Web Developer",
     initials: "PB",
     description:
-      "Maintains Learnova's web applications with a strong focus on performance and usability.",
+      "Maintains Learnova’s web pages and implements frontend features to ensure a smooth, responsive user experience.",
     color: "from-blue-500 to-cyan-500",
   },
   {
@@ -91,7 +91,7 @@ const TEAM_MEMBERS = [
     role: "Frontend Developer",
     initials: "PP",
     description:
-      "Designs intuitive and interactive user interfaces to deliver an engaging and accessible student experience.",
+      "Designs interactive user interfaces to deliver an engaging and accessible student experience.",
     color: "from-emerald-500 to-teal-500",
   },
   {
