@@ -6,7 +6,15 @@ import { doc, getDoc } from "firebase/firestore";
 /**
  * Provides authentication state and user profile information.
  * Tracks Firebase authentication changes and exposes auth-related utilities.
- * @returns {Object} Authentication state, user profile data, loading state, errors, and helper methods.
+ * @returns {{
+ *   user: Object|null,
+ *   userProfile: Object|null,
+ *   loading: boolean,
+ *   error: string|null,
+ *   signOut: Function,
+ *   isAuthenticated: boolean,
+ *   hasProfile: boolean
+ * }} Authentication state and helper methods.
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -14,12 +22,12 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-
   useEffect(() => {
-     if (!auth) {
-    setLoading(false);
-    return;
-  }
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
@@ -57,7 +65,7 @@ export const useAuth = () => {
   /**
    * Signs out the currently authenticated user and clears local auth state.
    * @returns {Promise<void>} Resolves when the user is successfully signed out.
-  */
+   */
   const signOut = async () => {
     try {
       await firebaseSignOut(auth);
