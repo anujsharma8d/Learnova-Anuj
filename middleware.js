@@ -18,9 +18,16 @@ let _cacheExpiry = 0;
  */
 async function fetchPublicKeys() {
   const now = Date.now();
+  
+  // L1 Cache: Fast in-memory return if the current Edge isolate is still alive
   if (_cachedKeys && now < _cacheExpiry) return _cachedKeys;
 
-  const res = await fetch(JWKS_URL);
+  // L2 Cache: Next.js Data Cache to prevent 429 Rate Limit errors across new Edge isolates
+  const res = await fetch(JWKS_URL, {
+    cache: "force-cache",
+    next: { revalidate: 21600 } // Cache response at the edge for 6 hours (21600 seconds)
+  });
+  
   if (!res.ok) {
     throw new Error(`JWKS fetch failed: ${res.status}`);
   }
@@ -118,8 +125,16 @@ async function verifyIdToken(token) {
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
 
-  // Retrieve cookies set by the client after successful Firebase sign-in
-  const authToken = request.cookies.get("authToken")?.value;
+  // Retrieve token from Authorization header or cookies
+  let authToken = null;
+  const authorization = request.headers.get("authorization");
+  if (authorization?.startsWith("Bearer ")) {
+    authToken = authorization.split(" ")[1];
+  }
+  if (!authToken) {
+    authToken = request.cookies.get("authToken")?.value;
+  }
+  
   const userRole = request.cookies.get("userRole")?.value;
 
   // Cryptographically verify the token — decoding alone is not sufficient
@@ -150,6 +165,9 @@ export async function middleware(request) {
   if (matchedDashboard) {
     // Not logged in or invalid token -> redirect to /auth
     if (!isTokenValid) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       return NextResponse.redirect(new URL("/auth", request.url));
     }
 
@@ -158,7 +176,15 @@ export async function middleware(request) {
       return NextResponse.redirect(new URL("/verify", request.url));
     }
 
-
+    // Role mismatch -> redirect to their appropriate dashboard or profile
+    if (userRole !== matchedDashboard.role) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden: Role mismatch" }, { status: 403 });
+      }
+      const correctDashboard = protectedDashboards.find((d) => d.role === userRole);
+      const redirectTarget = correctDashboard ? correctDashboard.defaultPath : "/profile";
+      return NextResponse.redirect(new URL(redirectTarget, request.url));
+    }
   }
 
   // 2. General user protected routes (/profile, /settings)

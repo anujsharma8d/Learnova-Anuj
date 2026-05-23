@@ -1,37 +1,16 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/mongodb";
-import { getUserProfile } from "@/lib/firebase-admin";
-import { withErrorHandler, authenticateRequest } from "@/lib/error-handler";
+import { getUserProfileByEmail } from "@/lib/firebase-admin";
+import { withErrorHandler } from "@/lib/error-handler";
+import { requireRole } from "@/lib/rbac";
 import { AppError, ValidationError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { ObjectId } from "mongodb";
 
-let ObjectId;
-if (process.env.NODE_ENV === "test") {
-  ObjectId = class FakeObjectId {
-    constructor(id) {
-      this.id = id;
-    }
-    static isValid(id) {
-      return typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id);
-    }
-  };
-} else {
-  ObjectId = require("mongodb").ObjectId;
-}
+// Required to prevent build-time static generation errors
+export const dynamic = "force-dynamic";
 
 export const PUT = withErrorHandler(async (request) => {
-  const decodedToken = await authenticateRequest(request);
-
-  // Fetch user profile from Firestore to get the user's role
-  const profile = await getUserProfile(decodedToken.uid);
-
-  if (!profile) {
-    throw new NotFoundError("User profile not found");
-  }
-
-  // Restrict access to admin and teacher roles only (return 403 Forbidden otherwise)
-  if (profile.role !== "admin" && profile.role !== "teacher") {
-    throw new ForbiddenError("Forbidden");
-  }
+  const { payload: decodedToken, profile } = await requireRole(request, ["admin", "teacher"]);
 
   const body = await request.json();
   const { exceptionId, status, comments } = body;
@@ -45,8 +24,7 @@ export const PUT = withErrorHandler(async (request) => {
   }
 
   const trimmedStatus = typeof status === "string" ? status.trim() : "";
-  const allowedStatuses = ["approved", "rejected"];
-  if (!allowedStatuses.includes(trimmedStatus)) {
+  if (!["approved", "rejected"].includes(trimmedStatus)) {
     throw new ValidationError("Invalid status value");
   }
 
@@ -56,7 +34,7 @@ export const PUT = withErrorHandler(async (request) => {
     const exception = await db.collection("exceptions").findOne({ _id: new ObjectId(exceptionId) });
 
     if (!exception) {
-      return jsonError("Exception not found", 404);
+      throw new NotFoundError("Exception not found");
     }
 
     // Perform teacher-specific assignment validation (CWE-639 resolution)
@@ -83,7 +61,7 @@ export const PUT = withErrorHandler(async (request) => {
       }
 
       if (!isAuthorized) {
-        return jsonError("Forbidden: You are not authorized to update exception requests for this class/student.", 403);
+        throw new ForbiddenError("Forbidden: You are not authorized to update exception requests for this class/student.");
       }
     }
 
@@ -99,18 +77,13 @@ export const PUT = withErrorHandler(async (request) => {
           reviewedAt: new Date(),
           updatedAt: new Date(),
         },
-      },
+      }
     );
   } catch (error) {
-    console.error("Exception update error:", error);
     throw new AppError("Internal server error", 500);
   }
 
-  if (result.matchedCount === 0) {
-    throw new NotFoundError("Exception not found");
-  }
+  if (result.matchedCount === 0) throw new NotFoundError("Exception not found");
 
-  return NextResponse.json({
-    message: "Exception updated successfully",
-  });
+  return NextResponse.json({ message: "Exception updated successfully" });
 });

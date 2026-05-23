@@ -1,8 +1,33 @@
-import { PUT } from "@/app/api/exceptions/update/route";
 import { connectDb } from "@/lib/mongodb";
 import { verifyFirebaseToken, getUserProfile, getUserProfileByEmail } from "@/lib/firebase-admin";
-import { ObjectId } from "mongodb";
 
+class ObjectId {
+  constructor(id) {
+    this.id = id;
+  }
+  toString() {
+    return this.id;
+  }
+  static isValid(id) {
+    return typeof id === "string" && id.length === 24;
+  }
+}
+
+jest.mock("mongodb", () => ({
+  ObjectId: class {
+    constructor(id) {
+      this.id = id;
+    }
+    toString() {
+      return this.id;
+    }
+    static isValid(id) {
+      return typeof id === "string" && id.length === 24;
+    }
+  }
+}));
+
+import { PUT } from "@/app/api/exceptions/update/route";
 jest.mock("next/server", () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((body, init) => {
@@ -74,8 +99,8 @@ describe("PUT /api/exceptions/update - Security and Validation Tests", () => {
     const response = await PUT(req);
     const body = await response.json();
 
-    expect(response.status).toBe(404);
-    expect(body.error).toBe("User profile not found");
+    expect(response.status).toBe(403);
+    expect(body.error).toBe("User profile not found. Access denied.");
     expect(mockUpdateOne).not.toHaveBeenCalled();
   });
 
@@ -91,7 +116,7 @@ describe("PUT /api/exceptions/update - Security and Validation Tests", () => {
     const body = await response.json();
 
     expect(response.status).toBe(403);
-    expect(body.error).toBe("Forbidden");
+    expect(body.error).toBe("Forbidden: Requires one of admin, teacher");
     expect(mockUpdateOne).not.toHaveBeenCalled();
   });
 
@@ -186,7 +211,7 @@ describe("PUT /api/exceptions/update - Security and Validation Tests", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.message).toBe("Exception updated successfully");
+    expect(body.message).toBe("Exception updated successfully");
     expect(mockUpdateOne).toHaveBeenCalled();
   });
 
@@ -212,7 +237,7 @@ describe("PUT /api/exceptions/update - Security and Validation Tests", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.message).toBe("Exception updated successfully");
+    expect(body.message).toBe("Exception updated successfully");
     expect(mockUpdateOne).toHaveBeenCalled();
   });
 
@@ -234,7 +259,7 @@ describe("PUT /api/exceptions/update - Security and Validation Tests", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.message).toBe("Exception updated successfully");
+    expect(body.message).toBe("Exception updated successfully");
     expect(mockUpdateOne).toHaveBeenCalled();
   });
 

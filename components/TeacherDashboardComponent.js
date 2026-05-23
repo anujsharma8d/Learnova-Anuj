@@ -118,6 +118,8 @@ const TeacherDashboard = () => {
       }
     };
 
+  // 2. Keep the useEffect to fetch the data when the page first loads
+  useEffect(() => {
     fetchTodayAttendanceStats();
   }, []);
   const [todayClasses, setTodayClasses] = useState([]);
@@ -456,7 +458,7 @@ const TeacherDashboard = () => {
     }, 1000);
 
     return () => {
-      clearInterval(timer);
+      clearInterval(interval);
       clearTimeout(loadingTimer);
     };
   }, []);
@@ -529,8 +531,7 @@ const TeacherDashboard = () => {
               <div className="text-sm text-gray-400">Window closes in</div>
               <div className="text-white font-semibold">
                 {10 - currentTime.getMinutes()}:
-                {60 - currentTime.getSeconds() < 10 ? "0" : ""}
-                {60 - currentTime.getSeconds()} min
+                {String(currentTime.getSeconds()).padStart(2, "0")} min
               </div>
             </div>
           </div>
@@ -582,8 +583,11 @@ const TeacherDashboard = () => {
               <h2 className="text-2xl font-bold text-white">
                 Today's Attendance Overview
               </h2>
-              <button className="text-accent hover:text-accent/80 transition-colors">
-                <RefreshCw className="w-5 h-5" />
+              <button 
+                onClick={fetchTodayAttendanceStats} 
+                className="text-accent hover:text-accent/80 transition-colors active:scale-95"
+              >
+                <RefreshCw className="w-5 h-5 hover:animate-spin" />
               </button>
             </div>
 
