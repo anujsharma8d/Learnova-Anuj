@@ -14,11 +14,22 @@ const EAR_THRESHOLD = 0.25;
 const BLINK_COOLDOWN_MS = 300;
 const PROCESSING_INTERVAL_MS = 100; // ~10 FPS
 
+/**
+ * FaceRecognizer Component
+ * 
+ * Performs real-time camera stream capturing, TinyFaceDetector identification, 
+ * and liveness detection (blink checks) to record user attendance securely.
+ * 
+ * @param {Object} props - Component properties.
+ * @param {Object} props.authUser - The currently authenticated Firebase user.
+ * @returns {React.ReactElement} The webcam face recognition and liveness tracking interface.
+ */
 export default function FaceRecognizer({ authUser }) {
   const isMounted = useRef(true);
   const activeStreamRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const isSubmittingRef = useRef(false);
   const cachedDescriptorsRef = useRef(null);
   const faceMatcherRef = useRef(null);
   
@@ -49,6 +60,7 @@ export default function FaceRecognizer({ authUser }) {
   const labels = fetchedLabels;
 
   const handleRetry = async () => {
+    isSubmittingRef.current = false;
     try {
       if (activeStreamRef.current) {
         activeStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -191,7 +203,9 @@ export default function FaceRecognizer({ authUser }) {
       await Promise.all(
         labels.map(async (student) => {
           try {
-            const img = await faceapi.fetchImage(student.image);
+            if (!student.hasImage) return null;
+            const imgUrl = `/api/images?id=${student._id}`;
+            const img = await faceapi.fetchImage(imgUrl);
             const detection = await faceapi
               .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
               .withFaceLandmarks()
@@ -202,6 +216,7 @@ export default function FaceRecognizer({ authUser }) {
             }
             return null;
           } catch (err) {
+            isSubmittingRef.current = false;
             console.error("Face descriptor error:", err);
             return null;
           }
@@ -250,9 +265,12 @@ export default function FaceRecognizer({ authUser }) {
     lastDetectionTime.current = now;
 
     const canvas = canvasRef.current;
+    
+    // Fix: Use getBoundingClientRect to match responsive Tailwind w-full scaling on mobile screens
+    const rect = video.getBoundingClientRect();
     const displaySize = {
-      width: video.videoWidth || 720,
-      height: video.videoHeight || 500,
+      width: rect.width || video.videoWidth || 720,
+      height: rect.height || video.videoHeight || 500,
     };
 
     canvas.width = displaySize.width;
@@ -368,15 +386,26 @@ export default function FaceRecognizer({ authUser }) {
     }
   };
 
+  /**
+   * Safe analytics page view logging. Wrapped in a try-catch block
+   * to prevent runtime crashes caused by client-side ad-blockers blocking Firebase Analytics.
+   */
   useEffect(() => {
     if (analytics) {
-      logEvent(analytics, "page_view", { page: "attendance" });
+      try {
+        logEvent(analytics, "page_view", { page: "attendance" });
+      } catch (err) {
+        console.warn("Analytics page_view logEvent was blocked or failed:", err);
+      }
     }
   }, []);
 
   useEffect(() => {
     const persistAttendance = async () => {
       if (!finished || !detectedPerson || !authUser?.uid || livenessState !== "AUTHENTICATED") {
+        return;
+      }
+      if (isSubmittingRef.current) {
         return;
       }
 
@@ -393,7 +422,7 @@ export default function FaceRecognizer({ authUser }) {
         setMessage("Face does not match signed-in account.");
         return;
       }
-
+      isSubmittingRef.current = true;
       setAttendanceState("saving");
 
       try {
@@ -429,7 +458,7 @@ export default function FaceRecognizer({ authUser }) {
 
         <canvas
           ref={canvasRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none z-20"
+          className="absolute top-0 left-0 w-full h-full pointer-events-none z-20 object-cover"
         />
 
         {/* Liveness Overlay */}
@@ -449,7 +478,7 @@ export default function FaceRecognizer({ authUser }) {
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-40">
             <div className="text-center space-y-4">
               <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto" />
-              <p className="text-white font-medium">Initializing Camera...</p>
+              <p className="text-white font-medium">{message}</p>
             </div>
           </div>
         )}
