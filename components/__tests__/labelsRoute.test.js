@@ -135,7 +135,7 @@ describe("GET /api/labels - Security & Authentication Tests", () => {
           { email: { $regex: "alice", $options: "i" } },
         ],
       },
-      { projection: { _id: 1, name: 1, email: 1, image: 1 } }
+      { projection: { _id: 1, name: 1, email: 1, image: 1, faceDescriptor: 1 } }
     );
     expect(mockLimit).toHaveBeenCalledWith(50);
   });
@@ -157,7 +157,7 @@ describe("GET /api/labels - Security & Authentication Tests", () => {
           { email: { $regex: "test\\.\\*\\+\\?", $options: "i" } },
         ],
       },
-      { projection: { _id: 1, name: 1, email: 1, image: 1 } }
+      { projection: { _id: 1, name: 1, email: 1, image: 1, faceDescriptor: 1 } }
     );
   });
 
