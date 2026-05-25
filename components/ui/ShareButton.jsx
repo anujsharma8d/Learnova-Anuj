@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Share2, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -12,6 +12,7 @@ import toast from "react-hot-toast";
  */
 export default function ShareButton({ className = "" }) {
   const [isCopied, setIsCopied] = useState(false);
+  const timeoutRef = useRef(null);
 
   const handleShare = async () => {
     try {
@@ -24,8 +25,13 @@ export default function ShareButton({ className = "" }) {
       setIsCopied(true);
       toast.success("Link copied to clipboard!");
 
+      // Clear any existing timeout to avoid race conditions
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
       // Revert copied state after 2 seconds
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         setIsCopied(false);
       }, 2000);
     } catch (error) {
@@ -34,12 +40,22 @@ export default function ShareButton({ className = "" }) {
     }
   };
 
+  // Clean up the timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <motion.button
+      type="button"
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       onClick={handleShare}
-      className={`inline-flex items-center justify-center gap-2 px-4.5 py-2.5 rounded-xl border text-sm font-bold shadow-sm transition-all duration-300 select-none ${
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-bold shadow-sm transition-all duration-300 select-none ${
         isCopied
           ? "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
           : "bg-white/90 dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
