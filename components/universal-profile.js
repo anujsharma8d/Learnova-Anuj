@@ -103,12 +103,15 @@ export default function UniversalProfile() {
   }, [user]);
 
   useEffect(() => {
+    let active = true;
     const fetchProfileData = async () => {
       if (!user?.uid) return;
 
       try {
         const userRef = doc(db, "users", user.uid);
         const userSnap = await getDoc(userRef);
+        
+        if (!active) return;
 
         if (userSnap.exists()) {
           const data = userSnap.data();
@@ -136,6 +139,8 @@ export default function UniversalProfile() {
         );
 
         const statsSnap = await getDoc(statsRef);
+        
+        if (!active) return;
 
         if (statsSnap.exists()) {
           setStats(statsSnap.data());
@@ -146,6 +151,7 @@ export default function UniversalProfile() {
     };
 
     fetchProfileData();
+    return () => { active = false; };
   }, [user]);
 
   const handleInputChange = (e) => {
