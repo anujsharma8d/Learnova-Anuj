@@ -328,6 +328,50 @@ async function saveConversation(userText, botText) {
 }
 
 // ---------------------------------------------------------------------------
+// Static Initial State & Markdown Components
+// ---------------------------------------------------------------------------
+const INITIAL_MESSAGE = {
+  id: "initial",
+  text: "Hello! I'm Nova, your AI assistant for Learnova. How can I assist you today?",
+  isBot: true,
+  timestamp: new Date(),
+};
+
+const markdownComponents = {
+  code({ node, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || "");
+    return match ? (
+      <CodeBlock
+        language={match[1]}
+        code={String(children).replace(/\n$/, "")}
+      />
+    ) : (
+      <code className="bg-zinc-800 text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
+        {children}
+      </code>
+    );
+  },
+  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed whitespace-pre-wrap break-words">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="mb-0.5">{children}</li>,
+  h1: ({ children }) => <h1 className="text-base font-bold mt-3 mb-1 text-purple-400">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-sm font-bold mt-2.5 mb-1 text-purple-400">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-xs font-bold mt-2 mb-0.5 text-purple-400">{children}</h3>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-400 hover:underline inline-flex items-center gap-0.5"
+    >
+      {children}
+      <ExternalLink size={12} className="inline shrink-0" />
+    </a>
+  ),
+};
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function LearnovaChatbot() {
