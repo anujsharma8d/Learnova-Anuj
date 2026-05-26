@@ -45,11 +45,13 @@ describe("POST /api/groq - Security, Authentication, Rate Limiting, and Timeout 
 
 
   const createMockRequest = (headers, bodyData) => {
+    const rawText = bodyData !== null ? JSON.stringify(bodyData) : "";
     return {
       headers: {
         get: (name) => headers[name.toLowerCase()] || null,
       },
       json: jest.fn().mockResolvedValue(bodyData),
+      text: jest.fn().mockResolvedValue(rawText),
     };
   };
 
