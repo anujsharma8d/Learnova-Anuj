@@ -7,9 +7,9 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   signOut,
-  
+  deleteUser,
 } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import {
   createUserProfile,
   getErrorMessage,
@@ -36,7 +36,7 @@ export const loginWithEmail = async (email, password, selectedRole) => {
     const userCredential = await signInWithEmailAndPassword(
       auth,
       email.trim(),
-      password
+      password,
     );
     const user = userCredential.user;
 
@@ -61,10 +61,33 @@ export const loginWithEmail = async (email, password, selectedRole) => {
         };
       }
 
-      // Update last login
-      await setDoc(doc(db, "users", user.uid), {
-        ...userData,
+      // Update last login — use updateDoc to avoid overwriting the
+      // entire document (including role) with potentially stale data
+      await updateDoc(doc(db, "users", user.uid), {
         lastLogin: new Date(),
+      });
+
+      // Migrate existing users to have cryptographically signed custom
+      // claims.  Fire-and-forget — the login succeeds regardless.
+      user.getIdToken().then((token) => {
+        fetch("/api/auth/set-role", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            role: userData.role,
+            fullName: userData.fullName || "",
+          }),
+        })
+        .then((res) => {
+          if (res.ok) {
+            // Force refresh token so the custom claims are present in the client-side session immediately
+            user.getIdToken(true).catch(() => {});
+          }
+        })
+        .catch(() => {});
       });
 
       return { success: true, userData };
@@ -72,7 +95,6 @@ export const loginWithEmail = async (email, password, selectedRole) => {
       return { success: false, needsProfile: true };
     }
   } catch (err) {
-    console.error("Login error:", err);
     return {
       success: false,
       error:
@@ -97,7 +119,7 @@ export const signupWithEmail = async (
   email,
   password,
   selectedRole,
-  additionalData
+  additionalData,
 ) => {
   try {
     if (!auth || !db) {
@@ -112,19 +134,24 @@ export const signupWithEmail = async (
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email.trim(),
-      password
+      password,
     );
     const user = userCredential.user;
 
-    // Create user profile with role
-    await createUserProfile(user, selectedRole, additionalData);
+    try {
+      // Create user profile with role
+      await createUserProfile(user, selectedRole, additionalData);
 
-    // Send verification email to new users
-    await sendEmailVerification(user);
+      // Send verification email to new users
+      await sendEmailVerification(user);
 
-    return { success: true, needsVerification: true };
+      return { success: true, needsVerification: true };
+    } catch (profileError) {
+      // Clean up the orphaned user account if profile creation fails
+      await deleteUser(user).catch(() => {});
+      throw profileError;
+    }
   } catch (err) {
-    console.error("Signup error:", err);
     return {
       success: false,
       error:
@@ -147,7 +174,7 @@ export const signupWithEmail = async (
 export const loginWithGoogle = async (
   selectedRole,
   isLogin,
-  additionalData = {}
+  additionalData = {},
 ) => {
   try {
     if (!auth || !db) {
@@ -174,7 +201,7 @@ export const loginWithGoogle = async (
         // New Google user signing up - create profile with selected role
         const nameToUse = user.displayName || additionalData.fullName?.trim();
         if (!nameToUse) {
-          // ✅ modular style
+          await deleteUser(user).catch(() => {});
           await signOut(auth);
           return {
             success: false,
@@ -182,10 +209,17 @@ export const loginWithGoogle = async (
           };
         }
 
-        await createUserProfile(user, selectedRole, {
-          ...additionalData,
-          fullName: nameToUse,
-        });
+        try {
+          await createUserProfile(user, selectedRole, {
+            ...additionalData,
+            fullName: nameToUse,
+          });
+          // Force refresh the token to immediately acquire the new custom claims (role) on the client side
+          await user.getIdToken(true);
+        } catch (profileError) {
+          await deleteUser(user).catch(() => {});
+          throw profileError;
+        }
 
         // Email is already verified with Google
         return { success: true, userData: { role: selectedRole } };
@@ -207,15 +241,36 @@ export const loginWithGoogle = async (
 
     // Update last login for existing users
     if (userData) {
-      await setDoc(doc(db, "users", user.uid), {
-        ...userData,
+      await updateDoc(doc(db, "users", user.uid), {
         lastLogin: new Date(),
+      });
+
+      // Migrate existing users to have cryptographically signed custom
+      // claims.  Fire-and-forget — the login succeeds regardless.
+      user.getIdToken().then((token) => {
+        fetch("/api/auth/set-role", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            role: userData.role,
+            fullName: userData.fullName || "",
+          }),
+        })
+        .then((res) => {
+          if (res.ok) {
+            // Force refresh token so the custom claims are present in the client-side session immediately
+            user.getIdToken(true).catch(() => {});
+          }
+        })
+        .catch(() => {});
       });
     }
 
     return { success: true, userData: userData || { role: selectedRole } };
   } catch (err) {
-    console.error("Google auth error:", err);
     return {
       success: false,
       error:
@@ -229,25 +284,34 @@ export const loginWithGoogle = async (
 };
 
 /**
- * Sends a password reset email to the user.
+ * Triggers a password reset email via the secure backend API route.
  * @param {string} email - The user's email address.
  * @returns {Promise<Object>} Result of the password reset request.
  */
 export const resetPassword = async (email) => {
   try {
-    if (!auth) {
-      return { success: false, error: FIREBASE_CONFIG_ERROR };
+    const sanitizedEmail = email.trim().toLowerCase();
+    const response = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: sanitizedEmail }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || getErrorMessage(data.error) || "Failed to send reset email. Please try again.",
+      };
     }
 
-    await sendPasswordResetEmail(auth, email);
     return { success: true };
   } catch (err) {
-    console.error("Password reset error:", err);
+    console.error("Reset password fetch error:", err);
     return {
       success: false,
-      error:
-        getErrorMessage(err.code) ||
-        "Failed to send reset email. Please try again.",
+      error: "An unexpected error occurred while communicating with the server.",
     };
   }
 };
